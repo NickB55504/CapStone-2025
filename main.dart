@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:mysql_client/mysql_client.dart';
+import 'package:bcrypt/bcrypt.dart';
 
 void main() => runApp(GreenDotApp());
 
@@ -10,7 +12,7 @@ class GreenDotApp extends StatelessWidget {
       title: 'Green Dot Solutions',
       theme: ThemeData(
         primarySwatch: Colors.green,
-        fontFamily: 'Georgia',
+        fontFamily: 'Sans Serif',
         scaffoldBackgroundColor: Colors.white,
       ),
       home: MainShell(),
@@ -24,11 +26,84 @@ class MainShell extends StatefulWidget {
   _MainShellState createState() => _MainShellState();
 }
 
-class _MainShellState extends State<MainShell> {
-  int _selectedIndex = 0;
-  final pages = [HomePage(), ProfilePage(), ContactPage(), FollowPage(), AboutPage()];
+class Database {
+  static late MySQLConnection conn;
 
-  void _onNavTap(int idx) {
+  static Future<void> databaseConnect() async {
+    conn = await MySQLConnection.createConnection(
+      host: 'your_host',
+      port: 3356,
+      userName: 'your_uname',
+      password: 'your_password',
+      databaseName: 'your_db'
+    );
+
+    await conn.connect();
+  }
+
+  static Future<void> databaseDisconnect() async {
+    conn.close();
+  }
+
+  static Future<List<Map<String, dynamic>>> getCustomers() async {
+    var result = await conn.execute("SELECT * FROM Customers;");
+
+    List<Map<String, dynamic>> customers = [];
+    for (var row in result.rows) {
+      Map<String, dynamic> table = row.assoc();
+      customers.add(table);
+      print("Username: ${table['first_name']}");
+    }
+    return customers;
+  }
+
+  static Future<void> checkPassword() async {
+    var result = await conn.execute("SELECT password FROM Customers WHERE email = entered_email;");
+    List<Map<String, dynamic>> customers = [];
+    for (var row in result.rows) {
+      Map<String, dynamic> table = row.assoc();
+      customers.add(table);
+      var password = table['password'];
+    final isMatch = BCrypt.checkpw('entered_password', password);
+    if (isMatch) {
+      print("yes");
+      print(password);
+    } else {
+      print("no");
+    }
+    }
+
+  }
+}
+
+class _MainShellState extends State<MainShell>{
+  int _selectedIndex = 0;
+  bool _loggedIn = false;
+
+
+  void _onNavTap(int idx) async {
+    Database.databaseConnect();
+    Database.checkPassword();
+    if (idx == 1) {
+      // Attempt to verify login
+      await Database.databaseConnect();
+      bool loggedIn = false;
+
+      try {
+        // Replace this with your own login state logic
+        // For example, you might store email/password in shared prefs
+        loggedIn = true;
+        // await Database.checkPassword(
+        //   {'email': 'udkm57@gmail.com'}, // placeholder
+        //   'A86NtjvpSRT2oO90',
+        // );
+      } catch (_) {}
+
+      setState(() {
+        _loggedIn = loggedIn;
+      });
+    }
+
     setState(() => _selectedIndex = idx);
   }
 
@@ -39,6 +114,20 @@ class _MainShellState extends State<MainShell> {
 
   @override
   Widget build(BuildContext context) {
+    final pages = [
+      HomePage(),
+      _loggedIn
+          ? ProfilePage()
+          : SignInPage(onSignInSuccess: () {
+        setState(() {
+          _loggedIn = true;
+        });
+      }),
+      ContactPage(),
+      FollowPage(),
+      AboutPage()
+    ];
+
     return Scaffold(
       drawer: AppDrawer(onNavigate: _onDrawerNavigate),
       body: pages[_selectedIndex],
@@ -49,81 +138,45 @@ class _MainShellState extends State<MainShell> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              Expanded(
-                child: TextButton(
-                  style: TextButton.styleFrom(
-                    backgroundColor: _selectedIndex == 0
-                        ? Colors.green.shade100
-                        : Colors.white,
-                    shape: const RoundedRectangleBorder(
-                      borderRadius: BorderRadius.zero,
-                    ),
-                  ),
-                  onPressed: () => _onNavTap(0),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.home,
-                        size: 24,
-                        color: _selectedIndex == 0
-                            ? Colors.green.shade800
-                            : Colors.black54,
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Home',
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: _selectedIndex == 0
-                              ? Colors.green.shade800
-                              : Colors.black87,
-                          fontFamily: 'Georgia',
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+              _navButton('Home', Icons.home, 0),
               Container(width: 2, color: Colors.black12),
-              Expanded(
-                child: TextButton(
-                  style: TextButton.styleFrom(
-                    backgroundColor: _selectedIndex == 1
-                        ? Colors.green.shade100
-                        : Colors.white,
-                    shape: const RoundedRectangleBorder(
-                      borderRadius: BorderRadius.zero,
-                    ),
-                  ),
-                  onPressed: () => _onNavTap(1),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.person,
-                        size: 24,
-                        color: _selectedIndex == 1
-                            ? Colors.green.shade800
-                            : Colors.black54,
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Profile',
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: _selectedIndex == 1
-                              ? Colors.green.shade800
-                              : Colors.black87,
-                          fontFamily: 'Georgia',
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+              _navButton('Profile', Icons.person, 1),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _navButton(String label, IconData icon, int idx) {
+    return Expanded(
+      child: TextButton(
+        style: TextButton.styleFrom(
+          backgroundColor: _selectedIndex == idx
+              ? Colors.green.shade100
+              : Colors.white,
+          shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+        ),
+        onPressed: () => _onNavTap(idx),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon,
+                size: 24,
+                color: _selectedIndex == idx
+                    ? Colors.green.shade800
+                    : Colors.black54),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 10,
+                color: _selectedIndex == idx
+                    ? Colors.green.shade800
+                    : Colors.black87,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -280,7 +333,7 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
                     fontSize: 28,
                     fontWeight: FontWeight.w600,
                     color: Colors.white,
-                    fontFamily: 'Georgia',
+                    fontFamily: 'Sans Serif',
                   ),
                 ),
               ),
@@ -305,12 +358,95 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
   Size get preferredSize => const Size.fromHeight(128);
 }
 
+class SignInPage extends StatefulWidget {
+  final VoidCallback onSignInSuccess;
+
+  const SignInPage({required this.onSignInSuccess});
+
+  @override
+  _SignInPageState createState() => _SignInPageState();
+}
+
+class _SignInPageState extends State<SignInPage> {
+  final _emailCtrl = TextEditingController();
+  final _passwordCtrl = TextEditingController();
+  bool _loading = false;
+  String? _error;
+
+  Future<void> _handleSignIn() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      await Database.databaseConnect();
+      bool success = true;
+      // bool success = await Database.checkPassword(
+      //   {'email': _emailCtrl.text},
+      //   _passwordCtrl.text,
+      // );
+
+      if (success) {
+        widget.onSignInSuccess();
+      } else {
+        setState(() {
+          _error = 'Invalid email or password';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _error = 'Error connecting to database';
+      });
+    } finally {
+      setState(() {
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppHeader(title: 'Sign In'),
+      body: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          children: [
+            TextField(
+              controller: _emailCtrl,
+              decoration: InputDecoration(labelText: 'Email'),
+            ),
+            TextField(
+              controller: _passwordCtrl,
+              decoration: InputDecoration(labelText: 'Password'),
+              obscureText: true,
+            ),
+            SizedBox(height: 20),
+            if (_error != null)
+              Text(_error!, style: TextStyle(color: Colors.red)),
+            SizedBox(height: 10),
+            ElevatedButton(
+              onPressed: _loading ? null : _handleSignIn,
+              child: _loading
+                  ? CircularProgressIndicator()
+                  : Text('Sign In'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+
 class ProfilePage extends StatefulWidget {
   @override
   _ProfilePageState createState() => _ProfilePageState();
 }
 
 class _ProfilePageState extends State<ProfilePage> {
+
   dynamic _nameCtrl = TextEditingController(text: 'John Doe');
   dynamic _emailCtrl = TextEditingController(text: 'johndoe@example.com');
   dynamic _phoneCtrl = TextEditingController(text: '(555) 123-4567');
@@ -359,7 +495,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   child: Text('Profile',
                       style: TextStyle(
                           fontSize: 36,
-                          fontFamily: 'Georgia',
+                          fontFamily: 'Sans Serif',
                           fontWeight: FontWeight.w600)),
                 ),
                 SizedBox(height: 18),
@@ -502,7 +638,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       style: TextStyle(
                           color: Colors.black87,
                           fontSize: 16,
-                          fontFamily: 'Georgia'),
+                          fontFamily: 'Sans Serif'),
                     ),
                   ),
                 ),
