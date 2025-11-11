@@ -1,7 +1,7 @@
-import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
-import 'package:mysql_client/mysql_client.dart';
 import 'package:bcrypt/bcrypt.dart';
+import 'package:flutter/material.dart';
+import 'package:mysql_client/mysql_client.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 void main() => runApp(GreenDotApp());
 
@@ -31,11 +31,11 @@ class Database {
 
   static Future<void> databaseConnect() async {
     conn = await MySQLConnection.createConnection(
-      host: 'your_host',
-      port: 3356,
-      userName: 'your_uname',
-      password: 'your_password',
-      databaseName: 'your_db'
+      host: 'Redacted',
+      port: 25060,
+      userName: 'Redacted',
+      password: 'Redacted',
+      databaseName: 'Redacted',
     );
 
     await conn.connect();
@@ -45,66 +45,54 @@ class Database {
     conn.close();
   }
 
-  static Future<List<Map<String, dynamic>>> getCustomers() async {
-    var result = await conn.execute("SELECT * FROM Customers;");
+  static Future<Map<String, dynamic>?> getCustomerByEmail(String email) async {
+    var result = await conn.execute(
+      "SELECT * FROM Customers WHERE email = :email;",
+      {'email': email},
+    );
 
-    List<Map<String, dynamic>> customers = [];
-    for (var row in result.rows) {
-      Map<String, dynamic> table = row.assoc();
-      customers.add(table);
-      print("Username: ${table['first_name']}");
-    }
-    return customers;
+    if (result.rows.isEmpty) return null;
+    return result.rows.first.assoc();
   }
 
-  static Future<void> checkPassword() async {
-    var result = await conn.execute("SELECT password FROM Customers WHERE email = entered_email;");
-    List<Map<String, dynamic>> customers = [];
-    for (var row in result.rows) {
-      Map<String, dynamic> table = row.assoc();
-      customers.add(table);
-      var password = table['password'];
-    final isMatch = BCrypt.checkpw('entered_password', password);
-    if (isMatch) {
-      print("yes");
-      print(password);
-    } else {
-      print("no");
+  static Future<bool> checkPassword(String email, String password) async {
+    var result = await conn.execute(
+      "SELECT password FROM Customers WHERE email = :email;",
+      {'email': email},
+    );
+    if (result.rows.isEmpty) {
+      return false;
     }
+    var customer = result.rows.first.assoc();
+    var hashedPassword = customer['password'].toString();
+    if (BCrypt.checkpw(password, hashedPassword)) {
+      return true;
     }
-
+    return false;
   }
 }
 
-class _MainShellState extends State<MainShell>{
+class _MainShellState extends State<MainShell> {
   int _selectedIndex = 0;
   bool _loggedIn = false;
-
+  String? _currentEmail = '';
 
   void _onNavTap(int idx) async {
-    Database.databaseConnect();
-    Database.checkPassword();
     if (idx == 1) {
-      // Attempt to verify login
       await Database.databaseConnect();
-      bool loggedIn = false;
 
-      try {
-        // Replace this with your own login state logic
-        // For example, you might store email/password in shared prefs
-        loggedIn = true;
-        // await Database.checkPassword(
-        //   {'email': 'udkm57@gmail.com'}, // placeholder
-        //   'A86NtjvpSRT2oO90',
-        // );
-      } catch (_) {}
-
+      if (_loggedIn) {
+        setState(() {
+          _selectedIndex = idx;
+        });
+        return;
+      }
       setState(() {
-        _loggedIn = loggedIn;
+        _selectedIndex = idx;
       });
+    } else {
+      setState(() => _selectedIndex = idx);
     }
-
-    setState(() => _selectedIndex = idx);
   }
 
   void _onDrawerNavigate(int idx) {
@@ -117,15 +105,19 @@ class _MainShellState extends State<MainShell>{
     final pages = [
       HomePage(),
       _loggedIn
-          ? ProfilePage()
-          : SignInPage(onSignInSuccess: () {
-        setState(() {
-          _loggedIn = true;
-        });
-      }),
+          ? ProfilePage(currentEmail: _currentEmail!)
+          : SignInPage(
+              onSignInSuccess: (email) {
+                setState(() {
+                  _loggedIn = true;
+                  _currentEmail = email;
+                  _selectedIndex = 1;
+                });
+              },
+            ),
       ContactPage(),
       FollowPage(),
-      AboutPage()
+      AboutPage(),
     ];
 
     return Scaffold(
@@ -161,11 +153,13 @@ class _MainShellState extends State<MainShell>{
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon,
-                size: 24,
-                color: _selectedIndex == idx
-                    ? Colors.green.shade800
-                    : Colors.black54),
+            Icon(
+              icon,
+              size: 24,
+              color: _selectedIndex == idx
+                  ? Colors.green.shade800
+                  : Colors.black54,
+            ),
             const SizedBox(height: 2),
             Text(
               label,
@@ -184,7 +178,6 @@ class _MainShellState extends State<MainShell>{
 }
 
 class HomePage extends StatelessWidget {
-
   Future<void> _launchFlutter() async {
     Uri url = Uri.parse('https://greendotsolutions.org/getstarted/');
     if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
@@ -196,7 +189,9 @@ class HomePage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        AppHeader(imagePath: 'assets/images/Green-dot-solutions_logo_70x70.png'),
+        AppHeader(
+          imagePath: 'assets/images/Green-dot-solutions_logo_70x70.png',
+        ),
         Expanded(
           child: SingleChildScrollView(
             child: Column(
@@ -233,61 +228,59 @@ class HomePage extends StatelessWidget {
 
                 // Company blurb
                 Padding(
-                  padding:
-                  const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 18,
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Padding(
                         padding: const EdgeInsets.only(bottom: 16),
                         child: Text(
-                        'Why Choose Us?',
-                        style: TextStyle(
+                          'Why Choose Us?',
+                          style: TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.w600,
-                            color: Colors.green.shade800),
+                            color: Colors.green.shade800,
+                          ),
                         ),
                       ),
                       Padding(
                         padding: const EdgeInsets.only(bottom: 16),
                         child: Text(
                           'Bin there, done that? You’re halfway to work when it hits you—you forgot to roll the cans out. Or worse, a holiday throws off the schedule and suddenly your trash is the only one left standing at the curb. One small slip-up and your whole week stinks (literally).',
-                          style: TextStyle(
-                              fontSize: 18,
-                              color: Colors.black),
+                          style: TextStyle(fontSize: 18, color: Colors.black),
                         ),
                       ),
                       Padding(
                         padding: const EdgeInsets.only(bottom: 16),
                         child: Text(
                           'Life’s already messy—why let trash day add to it? With our subscription service, you can relax while we handle the hassle. Rain, snow, or those last-minute dashes when you’ve forgotten—we’ll get your cans to the curb so you don’t have to.',
-                          style: TextStyle(
-                          fontSize: 18,
-                          color: Colors.black),
+                          style: TextStyle(fontSize: 18, color: Colors.black),
                         ),
                       ),
                       Padding(
                         padding: const EdgeInsets.only(bottom: 16),
                         child: Text(
                           '*We like to keep things simple—our service area is flexible! If you’re not sure whether we serve your address, just send us a quick message and we’ll let you know.',
-                          style: TextStyle(
-                              fontSize: 18,
-                              color: Colors.black),
+                          style: TextStyle(fontSize: 18, color: Colors.black),
                         ),
                       ),
-
                       SizedBox(height: 18),
                       Text(
                         'How it works',
                         style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.green.shade800),
+                          fontSize: 20,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.green.shade800,
+                        ),
                       ),
                       SizedBox(height: 8),
                       Text(
-                          'Select your plan, set your address and special instructions, then put your bin out on pickup day—we’ll take care of the rest.',
-                          style: TextStyle(fontSize: 18, height: 1.4)),
+                        'Select your plan, set your address and special instructions, then put your bin out on pickup day—we’ll take care of the rest.',
+                        style: TextStyle(fontSize: 18, height: 1.4),
+                      ),
                     ],
                   ),
                 ),
@@ -311,9 +304,7 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
   Widget build(BuildContext context) {
     return Container(
       height: preferredSize.height,
-      decoration: BoxDecoration(
-        color: Colors.greenAccent.shade400,
-      ),
+      decoration: BoxDecoration(color: Colors.greenAccent.shade400),
       child: SafeArea(
         bottom: false,
         child: Stack(
@@ -323,19 +314,19 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
                 padding: const EdgeInsets.only(top: 12.0),
                 child: imagePath != null
                     ? Image.asset(
-                  'assets/images/Green-dot-solutions_logo_70x70.png',
-                  height: 96, // adjust as needed
-                  fit: BoxFit.fitHeight,
-                )
+                        'assets/images/Green-dot-solutions_logo_70x70.png',
+                        height: 96, // adjust as needed
+                        fit: BoxFit.fitHeight,
+                      )
                     : Text(
-                  title ?? 'Green Dot Solutions',
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
-                    fontFamily: 'Sans Serif',
-                  ),
-                ),
+                        title ?? 'Green Dot Solutions',
+                        style: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                          fontFamily: 'Sans Serif',
+                        ),
+                      ),
               ),
             ),
             Positioned(
@@ -359,7 +350,7 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
 }
 
 class SignInPage extends StatefulWidget {
-  final VoidCallback onSignInSuccess;
+  final void Function(String email) onSignInSuccess;
 
   const SignInPage({required this.onSignInSuccess});
 
@@ -381,27 +372,21 @@ class _SignInPageState extends State<SignInPage> {
 
     try {
       await Database.databaseConnect();
-      bool success = true;
-      // bool success = await Database.checkPassword(
-      //   {'email': _emailCtrl.text},
-      //   _passwordCtrl.text,
-      // );
+      bool success = await Database.checkPassword(
+        _emailCtrl.text,
+        _passwordCtrl.text,
+      );
 
       if (success) {
-        widget.onSignInSuccess();
+        // Tell parent that login succeeded
+        widget.onSignInSuccess(_emailCtrl.text);
       } else {
-        setState(() {
-          _error = 'Invalid email or password';
-        });
+        setState(() => _error = 'Invalid email or password');
       }
     } catch (e) {
-      setState(() {
-        _error = 'Error connecting to database';
-      });
+      setState(() => _error = 'Database error');
     } finally {
-      setState(() {
-        _loading = false;
-      });
+      setState(() => _loading = false);
     }
   }
 
@@ -410,7 +395,7 @@ class _SignInPageState extends State<SignInPage> {
     return Scaffold(
       appBar: AppHeader(title: 'Sign In'),
       body: Padding(
-        padding: const EdgeInsets.all(20.0),
+        padding: const EdgeInsets.all(20),
         child: Column(
           children: [
             TextField(
@@ -422,15 +407,11 @@ class _SignInPageState extends State<SignInPage> {
               decoration: InputDecoration(labelText: 'Password'),
               obscureText: true,
             ),
-            SizedBox(height: 20),
             if (_error != null)
               Text(_error!, style: TextStyle(color: Colors.red)),
-            SizedBox(height: 10),
             ElevatedButton(
               onPressed: _loading ? null : _handleSignIn,
-              child: _loading
-                  ? CircularProgressIndicator()
-                  : Text('Sign In'),
+              child: _loading ? CircularProgressIndicator() : Text('Sign In'),
             ),
           ],
         ),
@@ -439,20 +420,50 @@ class _SignInPageState extends State<SignInPage> {
   }
 }
 
-
 class ProfilePage extends StatefulWidget {
+  final String currentEmail;
+
+  const ProfilePage({required this.currentEmail});
+
   @override
   _ProfilePageState createState() => _ProfilePageState();
 }
 
 class _ProfilePageState extends State<ProfilePage> {
+  // Create controllers
+  final _nameCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
+  final _phoneCtrl = TextEditingController();
+  final _addr1Ctrl = TextEditingController();
+  final _specialCtrl = TextEditingController();
 
-  dynamic _nameCtrl = TextEditingController(text: 'John Doe');
-  dynamic _emailCtrl = TextEditingController(text: 'johndoe@example.com');
-  dynamic _phoneCtrl = TextEditingController(text: '(555) 123-4567');
-  dynamic _addr1Ctrl = TextEditingController(text: 'Address Line 1');
-  dynamic _addr2Ctrl = TextEditingController(text: 'Address Line 2');
-  dynamic _specialCtrl = TextEditingController();
+  bool _loading = true; // to show a loader while fetching
+  Map<String, dynamic>? customer;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCustomer();
+  }
+
+  Future<void> _loadCustomer() async {
+    // Fetch the customer record asynchronously
+    final data = await Database.getCustomerByEmail(widget.currentEmail);
+
+    if (mounted) {
+      setState(() {
+        customer = data;
+        _loading = false;
+
+        // Fill the controllers with database values (or defaults)
+        _nameCtrl.text = data?['first_name'] ?? '';
+        _emailCtrl.text = data?['email'] ?? '';
+        _phoneCtrl.text = data?['phone_number'] ?? '';
+        _addr1Ctrl.text = data?['street_address'] ?? '';
+        _specialCtrl.text = data?['special_notes'] ?? '';
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -460,7 +471,6 @@ class _ProfilePageState extends State<ProfilePage> {
     _emailCtrl.dispose();
     _phoneCtrl.dispose();
     _addr1Ctrl.dispose();
-    _addr2Ctrl.dispose();
     _specialCtrl.dispose();
     super.dispose();
   }
@@ -468,65 +478,88 @@ class _ProfilePageState extends State<ProfilePage> {
   Widget labeledField(String label, Widget child) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(label,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
             style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: Colors.grey[800])),
-        SizedBox(height: 6),
-        child
-      ]),
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: Colors.grey[800],
+            ),
+          ),
+          const SizedBox(height: 6),
+          child,
+        ],
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
     return Column(
       children: [
-        AppHeader(imagePath: 'assets/images/Green-dot-solutions_logo_70x70.png'),
+        AppHeader(
+          imagePath: 'assets/images/Green-dot-solutions_logo_70x70.png',
+        ),
         Expanded(
           child: SingleChildScrollView(
-            padding: EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Center(
-                  child: Text('Profile',
-                      style: TextStyle(
-                          fontSize: 36,
-                          fontFamily: 'Sans Serif',
-                          fontWeight: FontWeight.w600)),
+                const Center(
+                  child: Text(
+                    'Profile',
+                    style: TextStyle(
+                      fontSize: 36,
+                      fontFamily: 'Sans Serif',
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
-                SizedBox(height: 18),
+                const SizedBox(height: 18),
+
+                // ACCOUNT INFO
                 labeledField(
                   'ACCOUNT INFO',
                   Card(
                     elevation: 0,
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                     child: Padding(
                       padding: const EdgeInsets.all(8.0),
                       child: Column(
                         children: [
                           TextField(
                             controller: _nameCtrl,
-                            decoration: InputDecoration(
-                                border: InputBorder.none, hintText: 'Name'),
+                            decoration: const InputDecoration(
+                              border: InputBorder.none,
+                              hintText: 'Dylan Doe',
+                            ),
                           ),
-                          Divider(),
+                          const Divider(),
                           TextField(
                             controller: _emailCtrl,
-                            decoration: InputDecoration(
-                                border: InputBorder.none,
-                                hintText: 'email@example.com'),
+                            decoration: const InputDecoration(
+                              border: InputBorder.none,
+                              hintText: 'udkm57@gmail.com',
+                            ),
                             keyboardType: TextInputType.emailAddress,
                           ),
-                          Divider(),
+                          const Divider(),
                           TextField(
                             controller: _phoneCtrl,
-                            decoration: InputDecoration(
-                                border: InputBorder.none, hintText: 'Phone'),
+                            decoration: const InputDecoration(
+                              border: InputBorder.none,
+                              hintText: '5551234567',
+                            ),
                             keyboardType: TextInputType.phone,
                           ),
                         ],
@@ -534,49 +567,54 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                   ),
                 ),
+
+                // ADDRESS
                 labeledField(
                   'ADDRESS',
                   Card(
                     elevation: 0,
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                     child: Padding(
                       padding: const EdgeInsets.all(8.0),
                       child: Column(
                         children: [
                           TextField(
                             controller: _addr1Ctrl,
-                            decoration:
-                            InputDecoration(border: InputBorder.none),
+                            decoration: const InputDecoration(
+                              border: InputBorder.none,
+                            ),
                           ),
-                          Divider(),
-                          TextField(
-                            controller: _addr2Ctrl,
-                            decoration:
-                            InputDecoration(border: InputBorder.none),
-                          ),
+                          const Divider(),
                         ],
                       ),
                     ),
                   ),
                 ),
+
+                // SUBSCRIPTION PLAN
                 labeledField(
                   'SUBSCRIPTION PLAN',
                   Card(
                     elevation: 0,
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                     child: ListTile(
-                      title: Text('Basic Plan',
-                          style: TextStyle(fontWeight: FontWeight.w600)),
-                      subtitle: Text('Renews on July 15'),
+                      title: const Text(
+                        'Basic Plan',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      subtitle: const Text('Renews on July 15'),
                       trailing: ElevatedButton(
                         onPressed: () {},
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.green.shade100,
                           elevation: 0,
                           shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8)),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
                         ),
                         child: Text(
                           'Upgrade',
@@ -586,63 +624,79 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                   ),
                 ),
+
+                // BILLING INFO
                 labeledField(
                   'BILLING INFO',
                   Card(
                     elevation: 0,
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                     child: ListTile(
-                      title: Text('VISA ending in 1234'),
+                      title: const Text('VISA ending in 1234'),
                       trailing: TextButton(
                         onPressed: () {},
-                        child: Text('Billing History',
-                            style: TextStyle(color: Colors.green.shade700)),
+                        child: Text(
+                          'Billing History',
+                          style: TextStyle(color: Colors.green.shade700),
+                        ),
                       ),
                     ),
                   ),
                 ),
+
+                // SPECIAL INSTRUCTIONS
                 labeledField(
                   'SPECIAL INSTRUCTIONS',
                   Card(
                     elevation: 0,
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                     child: Padding(
                       padding: const EdgeInsets.all(8.0),
                       child: TextField(
                         controller: _specialCtrl,
-                        decoration:
-                        InputDecoration(border: InputBorder.none, hintText: 'e.g. Leave by driveway'),
+                        decoration: const InputDecoration(
+                          border: InputBorder.none,
+                          hintText: 'e.g. Leave by driveway',
+                        ),
                         maxLines: 4,
                       ),
                     ),
                   ),
                 ),
-                SizedBox(height: 10),
+
+                const SizedBox(height: 10),
                 Center(
                   child: ElevatedButton(
                     onPressed: () {
-                      // Save logic here
                       ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Profile saved')));
+                        const SnackBar(content: Text('Profile saved')),
+                      );
                     },
                     style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green.shade300,
-                        padding:
-                        EdgeInsets.symmetric(horizontal: 36, vertical: 14),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8))),
-                    child: Text(
+                      backgroundColor: Colors.green.shade300,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 36,
+                        vertical: 14,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: const Text(
                       'Save Changes',
                       style: TextStyle(
-                          color: Colors.black87,
-                          fontSize: 16,
-                          fontFamily: 'Sans Serif'),
+                        color: Colors.black87,
+                        fontSize: 16,
+                        fontFamily: 'Sans Serif',
+                      ),
                     ),
                   ),
                 ),
-                SizedBox(height: 120), // space above bottom nav
+                const SizedBox(height: 120),
               ],
             ),
           ),
@@ -657,14 +711,19 @@ class AppDrawer extends StatelessWidget {
 
   const AppDrawer({required this.onNavigate});
 
-  Widget tile(BuildContext c, IconData icon, String title, Widget page, int idx) {
+  Widget tile(
+    BuildContext c,
+    IconData icon,
+    String title,
+    Widget page,
+    int idx,
+  ) {
     return ListTile(
       leading: Icon(icon, color: Colors.green.shade700),
       title: Text(title, style: TextStyle(fontWeight: FontWeight.w600)),
       onTap: () => onNavigate(idx),
     );
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -675,11 +734,14 @@ class AppDrawer extends StatelessWidget {
             Container(
               height: 80,
               alignment: Alignment.center,
-              child: Text('Green Dot Solutions',
-                  style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.green.shade700)),
+              child: Text(
+                'Green Dot Solutions',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.green.shade700,
+                ),
+              ),
             ),
             Divider(),
             tile(context, Icons.phone, 'Contact Us', ContactPage(), 2),
@@ -689,7 +751,7 @@ class AppDrawer extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.all(12.0),
               child: Text('v1.0', style: TextStyle(color: Colors.grey)),
-            )
+            ),
           ],
         ),
       ),
@@ -706,32 +768,24 @@ class ContactPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
-        children: [
-          AppHeader(title: 'Contact Us'),
-          SizedBox(height: 20,),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.phone, color: Colors.green,),
-              Text(
-                  'Call Us',
-                  style: TextStyle(
-                      color: Colors.green,
-                      fontSize: 30
-                  )
-              ),
-            ]
-          ),
-          InkWell (
-            onTap: () => _makePhoneCall('15732250881'),
-            child: Text(
-              '+1 573 225 0881',
-              style: const TextStyle(
-                fontSize: 20,
-              )
+      children: [
+        AppHeader(title: 'Contact Us'),
+        SizedBox(height: 20),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.phone, color: Colors.green),
+            Text(
+              'Call Us',
+              style: TextStyle(color: Colors.green, fontSize: 30),
             ),
-          )
-        ]
+          ],
+        ),
+        InkWell(
+          onTap: () => _makePhoneCall('15732250881'),
+          child: Text('+1 573 225 0881', style: const TextStyle(fontSize: 20)),
+        ),
+      ],
     );
   }
 }
@@ -758,9 +812,16 @@ class FollowPage extends StatelessWidget {
       children: [
         AppHeader(title: 'Follow Us'),
         SizedBox(height: 18),
-        Text('Stay connected with Green Dot Solutions', style: TextStyle(fontSize: 18)),
+        Text(
+          'Stay connected with Green Dot Solutions',
+          style: TextStyle(fontSize: 18),
+        ),
         SizedBox(height: 20),
-        socialTile('Facebook', Icons.facebook, 'https://www.facebook.com/greendotpaintco/'),
+        socialTile(
+          'Facebook',
+          Icons.facebook,
+          'https://www.facebook.com/greendotpaintco/',
+        ),
         socialTile('Instagram', Icons.camera_alt, 'google.com'),
         socialTile('X / Twitter', Icons.chat_bubble, 'google.com'),
         socialTile('LinkedIn', Icons.business, 'google.com'),
@@ -781,29 +842,58 @@ class AboutPage extends StatelessWidget {
           child: Image.asset('assets/images/trash_can.jpg', fit: BoxFit.cover),
         ),
         SizedBox(height: 12),
-        Text('Our Mission', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Colors.green.shade800)),
+        Text(
+          'Our Mission',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            color: Colors.green.shade800,
+          ),
+        ),
         SizedBox(height: 8),
         Padding(
           padding: EdgeInsets.only(left: 12),
-          child: Text('To provide dependable, eco-friendly trash pickup that keeps our communities clean and green.',
-              style: TextStyle(fontSize: 16))
+          child: Text(
+            'To provide dependable, eco-friendly trash pickup that keeps our communities clean and green.',
+            style: TextStyle(fontSize: 16),
+          ),
         ),
         SizedBox(height: 12),
-        Text('Why Choose Us?', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+        Text(
+          'Why Choose Us?',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+        ),
         SizedBox(height: 8),
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Affordable Plans', style: TextStyle(color: Colors.green, fontSize: 20),),
-            Text('Choose from a variety of subscription\n options that fit your budget and lifestyle.\n', style: TextStyle(fontSize: 16)),
-            Text('Customer Support', style: TextStyle(color: Colors.green, fontSize: 20)),
-            Text('Our team is ready to assist you with\n any questions or special requests.\n', style: TextStyle(fontSize: 16)),
-            Text('Reliable Service', style: TextStyle(color: Colors.green, fontSize: 20)),
-            Text('Count on us to be there, rain or shine.', style: TextStyle(fontSize: 16)),
+            Text(
+              'Affordable Plans',
+              style: TextStyle(color: Colors.green, fontSize: 20),
+            ),
+            Text(
+              'Choose from a variety of subscription\n options that fit your budget and lifestyle.\n',
+              style: TextStyle(fontSize: 16),
+            ),
+            Text(
+              'Customer Support',
+              style: TextStyle(color: Colors.green, fontSize: 20),
+            ),
+            Text(
+              'Our team is ready to assist you with\n any questions or special requests.\n',
+              style: TextStyle(fontSize: 16),
+            ),
+            Text(
+              'Reliable Service',
+              style: TextStyle(color: Colors.green, fontSize: 20),
+            ),
+            Text(
+              'Count on us to be there, rain or shine.',
+              style: TextStyle(fontSize: 16),
+            ),
           ],
         ),
       ],
-
     );
   }
 }
