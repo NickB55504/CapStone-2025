@@ -1,10 +1,11 @@
-import 'package:bcrypt/bcrypt.dart';
+import 'database.dart';
 import 'package:flutter/material.dart';
-import 'package:mysql_client/mysql_client.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+// Initialize app runtime.
 void main() => runApp(GreenDotApp());
 
+// Construct app foundation.
 class GreenDotApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -21,91 +22,56 @@ class GreenDotApp extends StatelessWidget {
   }
 }
 
+// Initialize abstract app frame.
 class MainShell extends StatefulWidget {
   @override
   _MainShellState createState() => _MainShellState();
 }
 
-class Database {
-  static late MySQLConnection conn;
 
-  static Future<void> databaseConnect() async {
-    conn = await MySQLConnection.createConnection(
-      host: 'Redacted',
-      port: 25060,
-      userName: 'Redacted',
-      password: 'Redacted',
-      databaseName: 'Redacted',
-    );
-
-    await conn.connect();
-  }
-
-  static Future<void> databaseDisconnect() async {
-    conn.close();
-  }
-
-  static Future<Map<String, dynamic>?> getCustomerByEmail(String email) async {
-    var result = await conn.execute(
-      "SELECT * FROM Customers WHERE email = :email;",
-      {'email': email},
-    );
-
-    if (result.rows.isEmpty) return null;
-    return result.rows.first.assoc();
-  }
-
-  static Future<bool> checkPassword(String email, String password) async {
-    var result = await conn.execute(
-      "SELECT password FROM Customers WHERE email = :email;",
-      {'email': email},
-    );
-    if (result.rows.isEmpty) {
-      return false;
-    }
-    var customer = result.rows.first.assoc();
-    var hashedPassword = customer['password'].toString();
-    if (BCrypt.checkpw(password, hashedPassword)) {
-      return true;
-    }
-    return false;
-  }
-}
-
+// Implement abstract main shell.
 class _MainShellState extends State<MainShell> {
   int _selectedIndex = 0;
   bool _loggedIn = false;
   String? _currentEmail = '';
 
+  // Logic for page switching.
   void _onNavTap(int idx) async {
+    // if page id = 1 and the user is logged in,
     if (idx == 1) {
       await Database.databaseConnect();
 
+      // point them to the profile page.
       if (_loggedIn) {
         setState(() {
           _selectedIndex = idx;
         });
         return;
+      // Otherwise, point to sign in page.
       }
       setState(() {
         _selectedIndex = idx;
       });
     } else {
+      // If the selected page isn't the profile or sign in,
+      // point to the selected page.
       setState(() => _selectedIndex = idx);
     }
   }
 
+  // Point to selected page in the hamburger menu
   void _onDrawerNavigate(int idx) {
     Navigator.pop(context);
     setState(() => _selectedIndex = idx);
   }
 
   @override
+  // List of pages and their constructors.
   Widget build(BuildContext context) {
     final pages = [
       HomePage(),
       _loggedIn
-          ? ProfilePage(currentEmail: _currentEmail!)
+          ? ProfilePage(currentEmail: _currentEmail!, onNavTap: _onNavTap,)
           : SignInPage(
               onSignInSuccess: (email) {
                 setState(() {
@@ -118,8 +84,10 @@ class _MainShellState extends State<MainShell> {
       ContactPage(),
       FollowPage(),
       AboutPage(),
+      PasswordPage(currentEmail: _currentEmail!),
     ];
 
+    // App scaffolding (persistent widgets/features)
     return Scaffold(
       drawer: AppDrawer(onNavigate: _onDrawerNavigate),
       body: pages[_selectedIndex],
@@ -140,17 +108,22 @@ class _MainShellState extends State<MainShell> {
     );
   }
 
+  // Bottom navigation bar
   Widget _navButton(String label, IconData icon, int idx) {
     return Expanded(
       child: TextButton(
         style: TextButton.styleFrom(
+          // If the page is selected, the button will be green.
+          // Otherwise, it will be white.
           backgroundColor: _selectedIndex == idx
               ? Colors.green.shade100
               : Colors.white,
           shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
         ),
+        // Calls page switch function.
         onPressed: () => _onNavTap(idx),
         child: Column(
+          // The icon and button text changes colors as well, if selected or not
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
@@ -177,7 +150,9 @@ class _MainShellState extends State<MainShell> {
   }
 }
 
+// Implement home page.
 class HomePage extends StatelessWidget {
+  // Define function to launch GDS website link.
   Future<void> _launchFlutter() async {
     Uri url = Uri.parse('https://greendotsolutions.org/getstarted/');
     if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
@@ -190,17 +165,18 @@ class HomePage extends StatelessWidget {
     return Column(
       children: [
         AppHeader(
+          // Logo, added in assets folder.
           imagePath: 'assets/images/Green-dot-solutions_logo_70x70.png',
         ),
         Expanded(
           child: SingleChildScrollView(
             child: Column(
               children: [
-                // Hero Image with center "Get Started" pill button
+                // Image with center "Get Started" pill button.
                 Stack(
                   alignment: Alignment.center,
                   children: [
-                    // Replace AssetImage with a local asset added to pubspec.yaml
+                    // Image for main page, added in assets folder.
                     Container(
                       height: 420,
                       width: double.infinity,
@@ -212,6 +188,7 @@ class HomePage extends StatelessWidget {
                         ),
                       ),
                     ),
+                    // Button to open link
                     ElevatedButton(
                       onPressed: _launchFlutter,
                       child: const Row(
@@ -294,6 +271,7 @@ class HomePage extends StatelessWidget {
   }
 }
 
+// Top of app's menu.
 class AppHeader extends StatelessWidget implements PreferredSizeWidget {
   final String? title;
   final String? imagePath;
@@ -312,6 +290,7 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
             Center(
               child: Padding(
                 padding: const EdgeInsets.only(top: 12.0),
+                // If the logo isn't provided, display title instead.
                 child: imagePath != null
                     ? Image.asset(
                         'assets/images/Green-dot-solutions_logo_70x70.png',
@@ -332,6 +311,7 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
             Positioned(
               right: 8,
               top: 8,
+              // Hamburger menu button
               child: Builder(
                 builder: (ctx) => IconButton(
                   icon: const Icon(Icons.menu, size: 28),
@@ -349,8 +329,10 @@ class AppHeader extends StatelessWidget implements PreferredSizeWidget {
   Size get preferredSize => const Size.fromHeight(128);
 }
 
+// Define abstract sign in page.
 class SignInPage extends StatefulWidget {
   final void Function(String email) onSignInSuccess;
+
 
   const SignInPage({required this.onSignInSuccess});
 
@@ -358,18 +340,22 @@ class SignInPage extends StatefulWidget {
   _SignInPageState createState() => _SignInPageState();
 }
 
+// Implement sign in page.
 class _SignInPageState extends State<SignInPage> {
+  // Initialize text fields to enter customer credentials.
   final _emailCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
   bool _loading = false;
   String? _error;
 
+  // Show loading screen if successful.
   Future<void> _handleSignIn() async {
     setState(() {
       _loading = true;
       _error = null;
     });
 
+    // Attempt a connection.
     try {
       await Database.databaseConnect();
       bool success = await Database.checkPassword(
@@ -378,13 +364,15 @@ class _SignInPageState extends State<SignInPage> {
       );
 
       if (success) {
-        // Tell parent that login succeeded
+        // Tell parent that login succeeded.
         widget.onSignInSuccess(_emailCtrl.text);
       } else {
         setState(() => _error = 'Invalid email or password');
       }
+    // Error fetching customer data.
     } catch (e) {
       setState(() => _error = 'Database error');
+    // If no errors, disable loading screen.
     } finally {
       setState(() => _loading = false);
     }
@@ -398,6 +386,7 @@ class _SignInPageState extends State<SignInPage> {
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
+            // Construct text fields.
             TextField(
               controller: _emailCtrl,
               decoration: InputDecoration(labelText: 'Email'),
@@ -409,6 +398,7 @@ class _SignInPageState extends State<SignInPage> {
             ),
             if (_error != null)
               Text(_error!, style: TextStyle(color: Colors.red)),
+            // Confirm sign in button.
             ElevatedButton(
               onPressed: _loading ? null : _handleSignIn,
               child: _loading ? CircularProgressIndicator() : Text('Sign In'),
@@ -420,22 +410,34 @@ class _SignInPageState extends State<SignInPage> {
   }
 }
 
+// Initialize abstract profile page.
 class ProfilePage extends StatefulWidget {
+  // Current email points to customer that is signed in.
   final String currentEmail;
+  final void Function(int idx) onNavTap;
 
-  const ProfilePage({required this.currentEmail});
+  const ProfilePage({required this.currentEmail, required this.onNavTap});
 
   @override
   _ProfilePageState createState() => _ProfilePageState();
 }
 
+// Implement profile page.
 class _ProfilePageState extends State<ProfilePage> {
+  // Initialize database.
+  final db = Database();
   // Create controllers
-  final _nameCtrl = TextEditingController();
+  final _firstNameCtrl = TextEditingController();
+  final _lastNameCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
   final _addr1Ctrl = TextEditingController();
-  final _specialCtrl = TextEditingController();
+  final _cityCtrl = TextEditingController();
+  final _stateCtrl = TextEditingController();
+  final _zipCtrl = TextEditingController();
+  final _trashdayCtrl = TextEditingController();
+  final _trashtimeCtrl = TextEditingController();
+  final _planCtrl = TextEditingController();
 
   bool _loading = true; // to show a loader while fetching
   Map<String, dynamic>? customer;
@@ -449,6 +451,7 @@ class _ProfilePageState extends State<ProfilePage> {
   Future<void> _loadCustomer() async {
     // Fetch the customer record asynchronously
     final data = await Database.getCustomerByEmail(widget.currentEmail);
+    final iv = data?['iv'] ?? '';
 
     if (mounted) {
       setState(() {
@@ -456,25 +459,39 @@ class _ProfilePageState extends State<ProfilePage> {
         _loading = false;
 
         // Fill the controllers with database values (or defaults)
-        _nameCtrl.text = data?['first_name'] ?? '';
-        _emailCtrl.text = data?['email'] ?? '';
-        _phoneCtrl.text = data?['phone_number'] ?? '';
-        _addr1Ctrl.text = data?['street_address'] ?? '';
-        _specialCtrl.text = data?['special_notes'] ?? '';
+        _firstNameCtrl.text = customer?['first_name'] ?? '';
+        _lastNameCtrl.text = customer?['last_name'] ?? '';
+        _emailCtrl.text = customer?['email'] ?? '';
+        _phoneCtrl.text = db.decrypt((customer?['phone_number'] ?? ''), iv);
+        _addr1Ctrl.text = db.decrypt((customer?['street_address'] ?? ''), iv);
+        _cityCtrl.text = db.decrypt((customer?['city'] ?? ''), iv);
+        _stateCtrl.text = customer?['state'] ?? '';
+        _zipCtrl.text = db.decrypt((customer?['zip_code'] ?? ''), iv);
+        _trashdayCtrl.text = customer?['trash_day'] ?? '';
+        _trashtimeCtrl.text = customer?['pickup_time'] ?? '';
+        _planCtrl.text = customer?['subscription_plan'] ?? '';
       });
     }
   }
 
+  // Close editors when finished.
   @override
   void dispose() {
-    _nameCtrl.dispose();
+    _firstNameCtrl.dispose();
+    _lastNameCtrl.dispose();
     _emailCtrl.dispose();
     _phoneCtrl.dispose();
     _addr1Ctrl.dispose();
-    _specialCtrl.dispose();
+    _cityCtrl.dispose();
+    _stateCtrl.dispose();
+    _zipCtrl.dispose();
+    _trashdayCtrl.dispose();
+    _trashtimeCtrl.dispose();
+    _planCtrl.dispose();
     super.dispose();
   }
 
+  // Constructor for profile sections.
   Widget labeledField(String label, Widget child) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0),
@@ -498,10 +515,12 @@ class _ProfilePageState extends State<ProfilePage> {
 
   @override
   Widget build(BuildContext context) {
+    // Loading screen.
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
 
+    // Construct account sections.
     return Column(
       children: [
         AppHeader(
@@ -537,19 +556,36 @@ class _ProfilePageState extends State<ProfilePage> {
                       padding: const EdgeInsets.all(8.0),
                       child: Column(
                         children: [
-                          TextField(
-                            controller: _nameCtrl,
-                            decoration: const InputDecoration(
-                              border: InputBorder.none,
-                              hintText: 'Dylan Doe',
-                            ),
+                          Row(
+                            children: [
+                              Expanded(
+                                flex: 1,
+                                child: TextField(
+                                  controller: _firstNameCtrl,
+                                  decoration: const InputDecoration(
+                                    border: InputBorder.none,
+                                    hintText: 'First',
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                flex: 1,
+                                child: TextField(
+                                  controller: _lastNameCtrl,
+                                  decoration: const InputDecoration(
+                                    border: InputBorder.none,
+                                    hintText: 'Last',
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                           const Divider(),
                           TextField(
                             controller: _emailCtrl,
                             decoration: const InputDecoration(
                               border: InputBorder.none,
-                              hintText: 'udkm57@gmail.com',
+                              hintText: 'email@email.com',
                             ),
                             keyboardType: TextInputType.emailAddress,
                           ),
@@ -558,7 +594,7 @@ class _ProfilePageState extends State<ProfilePage> {
                             controller: _phoneCtrl,
                             decoration: const InputDecoration(
                               border: InputBorder.none,
-                              hintText: '5551234567',
+                              hintText: '8001234567',
                             ),
                             keyboardType: TextInputType.phone,
                           ),
@@ -578,12 +614,43 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                     child: Padding(
                       padding: const EdgeInsets.all(8.0),
-                      child: Column(
+                      child: Row(
                         children: [
-                          TextField(
-                            controller: _addr1Ctrl,
-                            decoration: const InputDecoration(
-                              border: InputBorder.none,
+                          Expanded(
+                            flex: 2,
+                            child: TextField(
+                              controller: _addr1Ctrl,
+                              decoration: const InputDecoration(
+                                border: InputBorder.none,
+                                hintText: 'Street',
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            flex: 2,
+                            child: TextField(
+                              controller: _cityCtrl,
+                              decoration: const InputDecoration(
+                                border: InputBorder.none,
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            flex: 1,
+                            child: TextField(
+                              controller: _stateCtrl,
+                              decoration: const InputDecoration(
+                                border: InputBorder.none,
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            flex: 1,
+                            child: TextField(
+                              controller: _zipCtrl,
+                              decoration: const InputDecoration(
+                                border: InputBorder.none,
+                              ),
                             ),
                           ),
                           const Divider(),
@@ -593,62 +660,9 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                 ),
 
-                // SUBSCRIPTION PLAN
+                // ORDER INFO
                 labeledField(
-                  'SUBSCRIPTION PLAN',
-                  Card(
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: ListTile(
-                      title: const Text(
-                        'Basic Plan',
-                        style: TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                      subtitle: const Text('Renews on July 15'),
-                      trailing: ElevatedButton(
-                        onPressed: () {},
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green.shade100,
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                        child: Text(
-                          'Upgrade',
-                          style: TextStyle(color: Colors.green.shade900),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-
-                // BILLING INFO
-                labeledField(
-                  'BILLING INFO',
-                  Card(
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: ListTile(
-                      title: const Text('VISA ending in 1234'),
-                      trailing: TextButton(
-                        onPressed: () {},
-                        child: Text(
-                          'Billing History',
-                          style: TextStyle(color: Colors.green.shade700),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-
-                // SPECIAL INSTRUCTIONS
-                labeledField(
-                  'SPECIAL INSTRUCTIONS',
+                  'ORDER INFO',
                   Card(
                     elevation: 0,
                     shape: RoundedRectangleBorder(
@@ -656,25 +670,65 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                     child: Padding(
                       padding: const EdgeInsets.all(8.0),
-                      child: TextField(
-                        controller: _specialCtrl,
-                        decoration: const InputDecoration(
-                          border: InputBorder.none,
-                          hintText: 'e.g. Leave by driveway',
-                        ),
-                        maxLines: 4,
+                      child: Column(
+                        children: [
+                          TextField(
+                            controller: _trashdayCtrl,
+                            decoration: const InputDecoration(
+                              border: InputBorder.none,
+                              hintText: 'Day',
+                            ),
+                          ),
+                          const Divider(),
+                          TextField(
+                            controller: _trashtimeCtrl,
+                            decoration: const InputDecoration(
+                              border: InputBorder.none,
+                              hintText: '00:00:00',
+                            ),
+                            keyboardType: TextInputType.emailAddress,
+                          ),
+                          const Divider(),
+                          TextField(
+                            controller: _planCtrl,
+                            decoration: const InputDecoration(
+                              border: InputBorder.none,
+                              hintText: 'Plan',
+                            ),
+                            keyboardType: TextInputType.phone,
+                          ),
+                        ],
                       ),
                     ),
                   ),
                 ),
 
                 const SizedBox(height: 10),
+                // Button points to change password page.
+                ElevatedButton(onPressed: () => widget.onNavTap(5),
+                  child: Text('Change Password'),
+                ),
                 Center(
+                  // Save information button.
                   child: ElevatedButton(
-                    onPressed: () {
+                    onPressed: () async {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Profile saved')),
-                      );
+                        const SnackBar(content: Text('Profile saved')));
+                        await db.updateCustomer(
+                          oldEmail: widget.currentEmail,
+                          firstName: _firstNameCtrl.text,
+                          lastName: _lastNameCtrl.text,
+                          email: _emailCtrl.text,
+                          phone: _phoneCtrl.text,
+                          street: _addr1Ctrl.text,
+                          city: _cityCtrl.text,
+                          state: _stateCtrl.text,
+                          zip: _zipCtrl.text,
+                          trashDay: _trashdayCtrl.text,
+                          pickupTime: _trashtimeCtrl.text,
+                          plan: _planCtrl.text,
+                          iv: customer?['iv'] ?? '',
+                        );
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.green.shade300,
@@ -706,11 +760,148 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 }
 
+// Construct abstract Password page
+class PasswordPage extends StatefulWidget {
+  final String currentEmail;
+
+  const PasswordPage({required this.currentEmail});
+
+  @override
+  _PasswordPageState createState() => _PasswordPageState();
+}
+
+// Implementation of Password page
+class _PasswordPageState extends State<PasswordPage> {
+  final TextEditingController _currentPasswordController = TextEditingController();
+  final TextEditingController _newPasswordController = TextEditingController();
+  final TextEditingController _confirmPasswordController = TextEditingController();
+
+  bool _obscureCurrent = true;
+  bool _obscureNew = true;
+  bool _obscureConfirm = true;
+
+  @override
+  // Change password page frame.
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Change Password'),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+          child: Column(
+            children: [
+              TextFormField(
+                controller: _currentPasswordController,
+                obscureText: _obscureCurrent,
+                decoration: InputDecoration(
+                  labelText: 'Current Password',
+                  suffixIcon: IconButton(
+                    // Obscure the old password with *.
+                    icon: Icon(
+                      _obscureCurrent ? Icons.visibility : Icons.visibility_off,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _obscureCurrent = !_obscureCurrent;
+                      });
+                    },
+                  ),
+                ),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please enter your current password';
+                  }
+                  return null;
+                },
+              ),
+              SizedBox(height: 16),
+              TextFormField(
+                // Obscure the new password with *.
+                controller: _newPasswordController,
+                obscureText: _obscureNew,
+                decoration: InputDecoration(
+                  labelText: 'New Password',
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _obscureNew ? Icons.visibility : Icons.visibility_off,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _obscureNew = !_obscureNew;
+                      });
+                    },
+                  ),
+                ),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please enter a new password';
+                  }
+                  if (value.length < 6) {
+                    return 'Password must be at least 6 characters';
+                  }
+                  return null;
+                },
+              ),
+              SizedBox(height: 16),
+              TextFormField(
+                controller: _confirmPasswordController,
+                obscureText: _obscureConfirm,
+                decoration: InputDecoration(
+                  labelText: 'Confirm New Password',
+                  suffixIcon: IconButton(
+                    // Obscure confirmation password
+                    icon: Icon(
+                      _obscureConfirm ? Icons.visibility : Icons.visibility_off,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _obscureConfirm = !_obscureConfirm;
+                      });
+                    },
+                  ),
+                ),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please confirm your new password';
+                  }
+                  if (value != _newPasswordController.text) {
+                    return 'Passwords do not match';
+                  }
+                  return null;
+                },
+              ),
+              SizedBox(height: 32),
+              ElevatedButton(
+                onPressed: () async {
+                  String salt = await Database.getSalt(widget.currentEmail);
+                  await Database.changePassword(widget.currentEmail, _currentPasswordController.text, _newPasswordController.text, _confirmPasswordController.text, salt);
+                },
+                child: Text('Change Password'),
+              ),
+            ],
+          ),
+        ),
+    );
+  }
+
+  @override
+  // Close text editors.
+  void dispose() {
+    _currentPasswordController.dispose();
+    _newPasswordController.dispose();
+    _confirmPasswordController.dispose();
+    super.dispose();
+  }
+}
+
+// Implement hamburger menu
 class AppDrawer extends StatelessWidget {
   final void Function(int idx) onNavigate;
 
   const AppDrawer({required this.onNavigate});
 
+  // Constructor to make page with tap function.
   Widget tile(
     BuildContext c,
     IconData icon,
@@ -744,13 +935,13 @@ class AppDrawer extends StatelessWidget {
               ),
             ),
             Divider(),
+            // Construct each page.
             tile(context, Icons.phone, 'Contact Us', ContactPage(), 2),
             tile(context, Icons.share, 'Follow Us', FollowPage(), 3),
             tile(context, Icons.info, 'About Us', AboutPage(), 4),
             Spacer(),
             Padding(
               padding: const EdgeInsets.all(12.0),
-              child: Text('v1.0', style: TextStyle(color: Colors.grey)),
             ),
           ],
         ),
@@ -759,7 +950,9 @@ class AppDrawer extends StatelessWidget {
   }
 }
 
+// Implement contact page.
 class ContactPage extends StatelessWidget {
+  // Call launcher library.
   Future<void> _makePhoneCall(String number) async {
     final Uri phoneUri = Uri(scheme: 'tel', path: number);
     await launchUrl(phoneUri);
@@ -782,6 +975,7 @@ class ContactPage extends StatelessWidget {
           ],
         ),
         InkWell(
+          // Call url launcher function.
           onTap: () => _makePhoneCall('15732250881'),
           child: Text('+1 573 225 0881', style: const TextStyle(fontSize: 20)),
         ),
@@ -790,7 +984,9 @@ class ContactPage extends StatelessWidget {
   }
 }
 
+// Implement follow page
 class FollowPage extends StatelessWidget {
+  // Call launcher library function.
   Future<void> _launchUrl(String url) async {
     Uri uri = Uri.parse(url);
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
@@ -830,6 +1026,7 @@ class FollowPage extends StatelessWidget {
   }
 }
 
+// Implement about page.
 class AboutPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
